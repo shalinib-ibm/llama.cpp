@@ -3020,11 +3020,9 @@ class tinyBLAS_PPC {
     }
 
     void mnpack(int64_t m0, int64_t m, int64_t n0, int64_t n) {
-	//printf("In mnpack m0 m n0 n %ld %ld %ld %ld\n", m0,m, n0, n);
         int64_t mc, nc, mp, np;
         int m_rem = MIN(m - m0, 16);
         int n_rem = MIN(n - n0, 16);
-	//printf("m_rem n_rem %d %d\n", m_rem, n_rem);
         if (m_rem >= 16 && n_rem >= 8) {
             mc = 8;
             nc = 8;
@@ -3168,13 +3166,11 @@ class tinyBLAS_PPC {
         }
         mp = m0 + (m - m0) / mc * mc;
         np = n0 + (n - n0) / nc * nc;
-	//printf("mp np %d %d", mp, np);
         mnpack(mp, m, n0, np);
         mnpack(m0, m, np, n);
     }
 
      void gemm_small(int64_t m0, int64_t m, int64_t n0, int64_t n, int RM, int RN) {
-	     //printf("In gemm small m n %d, %d\n", RM, RN);
         int64_t ytiles = (m - m0) / RM;
         int64_t xtiles = (n - n0) / RN;
         int64_t tiles = xtiles * ytiles;
