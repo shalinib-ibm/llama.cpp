@@ -3396,7 +3396,6 @@ bool llamafile_sgemm(const struct ggml_compute_params * params, int64_t m, int64
 	}
 #else
 	return false;
-
 #endif
     }
 
