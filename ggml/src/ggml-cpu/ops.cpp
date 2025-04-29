@@ -6117,7 +6117,7 @@ static void ggml_compute_forward_conv_2d_dw_cwhn(
 #ifdef GGML_SIMD
             // Vectorized loop
             for (int64_t c_i = 0; c_i < c_pkg_end; c_i += pkg_size) {
-                GGML_F32_VEC sum = GGML_F32_VEC_ZERO;
+                GGML_F32_VEC sum[1] = {GGML_F32_VEC_ZERO};
                 for (int64_t knl_y = 0; knl_y < p.knl_h; ++knl_y) {
                     const int64_t src_y = src_y_base + knl_y * p.dilation_y;
                     if (src_y < 0 || src_y >= p.src_h) {
@@ -6130,10 +6130,10 @@ static void ggml_compute_forward_conv_2d_dw_cwhn(
                         }
                         GGML_F32_VEC k = GGML_F32_VEC_LOAD(knl_data + (knl_y * p.knl_w + knl_x) * c + c_i);
                         GGML_F32_VEC s = GGML_F32_VEC_LOAD(src_data + (src_y * p.src_w + src_x) * c + c_i);
-                        sum = GGML_F32_VEC_FMA(sum, k, s);
+                        sum[0] = GGML_F32_VEC_FMA(sum[0], k, s);
                     }
                 }
-                GGML_F32_VEC_STORE(dst_data + c_i, sum);
+                GGML_F32_VEC_STORE(dst_data + c_i, sum[0]);
             }
 #endif
             // Scalar loop
