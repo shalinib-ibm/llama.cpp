@@ -3920,46 +3920,78 @@ void ggml_vec_dot_q8_0_q8_0(int n, float * GGML_RESTRICT s, size_t bs, const voi
 
         sumf += sumi*(GGML_FP16_TO_FP32(x[ib].d)*GGML_FP16_TO_FP32(y[ib].d));
     }
-#elif defined(__POWER9_VECTOR__)
-    const vector signed int v0 = vec_splats((int32_t)0);
-    vector float vsumf0 = vec_splats(0.0f);
+    #if defined(__POWER9_VECTOR__)
+        const int batch_size = 4;
+    	float vsumf0 = 0.0f;
 
-#pragma GCC unroll 8
-    for (; ib < nb; ++ib) {
-        __builtin_prefetch(x[ib].qs, 0, 1);
-        __builtin_prefetch(y[ib].qs, 0, 1);
+    	vector unsigned char xor_vector = vec_splats((unsigned char)0x80);
+    	vector unsigned char one_vector = vec_splats((unsigned char)1);
 
-        vector float vxd = vec_splats(GGML_FP16_TO_FP32(x[ib].d));
-        vector float vyd = vec_splats(GGML_FP16_TO_FP32(y[ib].d));
-        vector float vd = vec_mul(vxd, vyd);
+    	for (; ib < nb; ib += batch_size) {
+            __vector_quad acc[batch_size * 2];
+            __vector_quad acc_hsum[batch_size * 2];
+            vector unsigned char q8x_store[batch_size][2];
+            float deltas[batch_size];
 
-        vector signed char q8x0 = vec_xl( 0, x[ib].qs);
-        vector signed char q8x1 = vec_xl(16, x[ib].qs);
-        vector signed char q8y0 = vec_xl( 0, y[ib].qs);
-        vector signed char q8y1 = vec_xl(16, y[ib].qs);
+            for (int i = 0; i < batch_size * 2; i++) {
+                __builtin_mma_xxsetaccz(&acc[i]);
+                __builtin_mma_xxsetaccz(&acc_hsum[i]);
+            }
 
-        vector signed short qv0 = vec_mule(q8x0, q8y0);
-        vector signed short qv1 = vec_mulo(q8x0, q8y0);
-        vector signed short qv2 = vec_mule(q8x1, q8y1);
-        vector signed short qv3 = vec_mulo(q8x1, q8y1);
+            for (int b = 0; b < batch_size; ++b) {
+                deltas[b] = GGML_FP16_TO_FP32(x[ib + b].d) * GGML_FP16_TO_FP32(y[ib + b].d);
+                __builtin_prefetch(x[ib + b].qs, 0, 1);
+                __builtin_prefetch(y[ib + b].qs, 0, 1);
 
-        vector signed int vsumi0 = v0;
-        vector signed int vsumi1 = v0;
+                __vector_pair X, Y;
+                __vector_unsigned char q8x[2], q8y[2];
 
-        vsumi0 = vec_sum4s(qv0, vsumi0);
-        vsumi1 = vec_sum4s(qv1, vsumi1);
-        vsumi0 = vec_sum4s(qv2, vsumi0);
-        vsumi1 = vec_sum4s(qv3, vsumi1);
+                X = __builtin_vsx_lxvp(0, (__vector_pair*)x[ib + b].qs);
+                Y = __builtin_vsx_lxvp(0, (__vector_pair*)y[ib + b].qs);
 
-        vsumi0 = vec_add(vsumi0, vsumi1);
+                __builtin_vsx_disassemble_pair(q8x, &X);
+                __builtin_vsx_disassemble_pair(q8y, &Y);
 
-        vsumf0 = vec_madd(vec_ctf(vsumi0, 0), vd, vsumf0);
-    }
+            	q8y[0] = vec_xor(q8y[0], xor_vector);
+            	q8y[1] = vec_xor(q8y[1], xor_vector);
 
-    vsumf0 = vec_add(vsumf0, vec_sld(vsumf0, vsumf0, 4));
-    vsumf0 = vec_add(vsumf0, vec_sld(vsumf0, vsumf0, 8));
+            	q8x_store[b][0] = q8x[0];
+            	q8x_store[b][1] = q8x[1];
 
-    sumf = vec_extract(vsumf0, 0);
+            	__builtin_mma_xvi8ger4pp(&acc[b * 2 + 0], q8x[0], q8y[0]);
+            	__builtin_mma_xvi8ger4pp(&acc[b * 2 + 1], q8x[1], q8y[1]);
+
+            	__builtin_mma_xvi8ger4pp(&acc_hsum[b * 2 + 0], q8x[0], one_vector);
+            	__builtin_mma_xvi8ger4pp(&acc_hsum[b * 2 + 1], q8x[1], one_vector);
+            }
+
+       	    for (int b = 0; b < batch_size; ++b) {
+                vector signed int temp0[4], temp1[4];
+
+                __builtin_mma_disassemble_acc(temp0, &acc[b * 2 + 0]);
+                __builtin_mma_disassemble_acc(temp1, &acc[b * 2 + 1]);
+
+                int32_t mma_sum0 = *((int32_t*)&temp0[0] + 0) + *((int32_t*)&temp0[1] + 1) +
+                               *((int32_t*)&temp0[2] + 2) + *((int32_t*)&temp0[3] + 3);
+                int32_t mma_sum1 = *((int32_t*)&temp1[0] + 0) + *((int32_t*)&temp1[1] + 1) +
+                               *((int32_t*)&temp1[2] + 2) + *((int32_t*)&temp1[3] + 3);
+
+            	__builtin_mma_disassemble_acc(temp0, &acc_hsum[b * 2 + 0]);
+            	__builtin_mma_disassemble_acc(temp1, &acc_hsum[b * 2 + 1]);
+
+            	int32_t sum0 = *((int32_t*)&temp0[0] + 0) + *((int32_t*)&temp0[1] + 1) +
+                           *((int32_t*)&temp0[2] + 2) + *((int32_t*)&temp0[3] + 3);
+            	int32_t sum1 = *((int32_t*)&temp1[0] + 0) + *((int32_t*)&temp1[1] + 1) +
+                           *((int32_t*)&temp1[2] + 2) + *((int32_t*)&temp1[3] + 3);
+
+            	int32_t vsum = mma_sum0 + mma_sum1 + (sum0 + sum1) * -128;
+            	vsumf0 += (float)vsum * deltas[b];
+            }
+        }
+
+    	return vsumf0;
+   
+#endif
 
 #elif defined(__loongarch_asx)
     // Initialize accumulator with zeros
