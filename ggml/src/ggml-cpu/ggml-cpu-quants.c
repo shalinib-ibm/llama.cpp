@@ -3922,10 +3922,92 @@ void ggml_vec_dot_q8_0_q8_0(int n, float * GGML_RESTRICT s, size_t bs, const voi
     }
 #elif defined(__POWER9_VECTOR__)
     const vector signed int v0 = vec_splats((int32_t)0);
-    vector float vsumf0 = vec_splats(0.0f);
+    //vector float vsumf0 = vec_splats(0.0f);
 
-#pragma GCC unroll 8
-    for (; ib < nb; ++ib) {
+//#pragma GCC unroll 8
+    const int unroll_factor = 16;
+vector float vsumf[unroll_factor];
+for (int i = 0; i < unroll_factor; ++i) {
+    vsumf[i] = vec_splats(0.0f);
+}
+
+for (; ib <= nb - unroll_factor; ib += unroll_factor) {
+    #pragma GCC unroll 1  // disable inner unroll, already unrolled manually
+
+    for (int u = 0; u < unroll_factor; ++u) {
+        __builtin_prefetch(x[ib+u].qs, 0, 1);
+        __builtin_prefetch(y[ib+u].qs, 0, 1);
+
+        vector float vxd = vec_splats(GGML_FP16_TO_FP32(x[ib+u].d));
+        vector float vyd = vec_splats(GGML_FP16_TO_FP32(y[ib+u].d));
+        vector float vd = vec_mul(vxd, vyd);
+
+        vector signed char q8x0 = vec_xl( 0, x[ib+u].qs);
+        vector signed char q8x1 = vec_xl(16, x[ib+u].qs);
+        vector signed char q8y0 = vec_xl( 0, y[ib+u].qs);
+        vector signed char q8y1 = vec_xl(16, y[ib+u].qs);
+
+        vector signed short qv0 = vec_mule(q8x0, q8y0);
+        vector signed short qv1 = vec_mulo(q8x0, q8y0);
+        vector signed short qv2 = vec_mule(q8x1, q8y1);
+        vector signed short qv3 = vec_mulo(q8x1, q8y1);
+
+        vector signed int vsumi0 = v0;
+        vector signed int vsumi1 = v0;
+
+        vsumi0 = vec_sum4s(qv0, vsumi0);
+        vsumi1 = vec_sum4s(qv1, vsumi1);
+        vsumi0 = vec_sum4s(qv2, vsumi0);
+        vsumi1 = vec_sum4s(qv3, vsumi1);
+
+        vsumi0 = vec_add(vsumi0, vsumi1);
+
+        vsumf[u] = vec_madd(vec_ctf(vsumi0, 0), vd, vsumf[u]);
+    }
+}
+
+// Handle leftover elements
+for (; ib < nb; ++ib) {
+    __builtin_prefetch(x[ib].qs, 0, 1);
+    __builtin_prefetch(y[ib].qs, 0, 1);
+
+    vector float vxd = vec_splats(GGML_FP16_TO_FP32(x[ib].d));
+    vector float vyd = vec_splats(GGML_FP16_TO_FP32(y[ib].d));
+    vector float vd = vec_mul(vxd, vyd);
+
+    vector signed char q8x0 = vec_xl( 0, x[ib].qs);
+    vector signed char q8x1 = vec_xl(16, x[ib].qs);
+    vector signed char q8y0 = vec_xl( 0, y[ib].qs);
+    vector signed char q8y1 = vec_xl(16, y[ib].qs);
+
+    vector signed short qv0 = vec_mule(q8x0, q8y0);
+    vector signed short qv1 = vec_mulo(q8x0, q8y0);
+    vector signed short qv2 = vec_mule(q8x1, q8y1);
+    vector signed short qv3 = vec_mulo(q8x1, q8y1);
+
+    vector signed int vsumi0 = v0;
+    vector signed int vsumi1 = v0;
+
+    vsumi0 = vec_sum4s(qv0, vsumi0);
+    vsumi1 = vec_sum4s(qv1, vsumi1);
+    vsumi0 = vec_sum4s(qv2, vsumi0);
+    vsumi1 = vec_sum4s(qv3, vsumi1);
+
+    vsumi0 = vec_add(vsumi0, vsumi1);
+
+    vsumf[0] = vec_madd(vec_ctf(vsumi0, 0), vd, vsumf[0]);
+}
+
+// Final reduction of partial sums
+vector float vsumf0 = vsumf[0];
+for (int i = 1; i < unroll_factor; ++i) {
+    vsumf0 = vec_add(vsumf0, vsumf[i]);
+}
+vsumf0 = vec_add(vsumf0, vec_sld(vsumf0, vsumf0, 4));
+vsumf0 = vec_add(vsumf0, vec_sld(vsumf0, vsumf0, 8));
+sumf = vec_extract(vsumf0, 0);
+
+    /*for (; ib < nb; ++ib) {
         __builtin_prefetch(x[ib].qs, 0, 1);
         __builtin_prefetch(y[ib].qs, 0, 1);
 
@@ -3959,7 +4041,7 @@ void ggml_vec_dot_q8_0_q8_0(int n, float * GGML_RESTRICT s, size_t bs, const voi
     vsumf0 = vec_add(vsumf0, vec_sld(vsumf0, vsumf0, 4));
     vsumf0 = vec_add(vsumf0, vec_sld(vsumf0, vsumf0, 8));
 
-    sumf = vec_extract(vsumf0, 0);
+    sumf = vec_extract(vsumf0, 0);*/
 
 #elif defined(__loongarch_asx)
     // Initialize accumulator with zeros
