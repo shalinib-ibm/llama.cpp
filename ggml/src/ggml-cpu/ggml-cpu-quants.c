@@ -3929,9 +3929,8 @@ void ggml_vec_dot_q8_0_q8_0(int n, float * GGML_RESTRICT s, size_t bs, const voi
         __builtin_prefetch(x[ib].qs, 0, 1);
         __builtin_prefetch(y[ib].qs, 0, 1);
 
-        vector float vxd = vec_splats(GGML_FP16_TO_FP32(x[ib].d));
-        vector float vyd = vec_splats(GGML_FP16_TO_FP32(y[ib].d));
-        vector float vd = vec_mul(vxd, vyd);
+	float delta = GGML_FP16_TO_FP32(x[ib].d) * GGML_FP16_TO_FP32(y[ib].d);
+	vector float vd = vec_splats(delta);
 
         vector signed char q8x0 = vec_xl( 0, x[ib].qs);
         vector signed char q8x1 = vec_xl(16, x[ib].qs);
