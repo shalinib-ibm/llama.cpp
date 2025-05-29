@@ -2188,6 +2188,32 @@ class tinyBLAS_PPC {
 
     void (tinyBLAS_PPC::*kernel)(int64_t, int64_t);
 
+    inline void save_acc(acc_t* ACC, int64_t ii, int64_t jj) {
+       vec_t vec_C[4];
+       __builtin_mma_disassemble_acc(vec_C, ACC);
+       for (int I = 0; I < 4; I++) {
+	  for (int J = 0; J < 4; J++) {
+	     *((float*)(C+ii+((jj+J)*ldc)+I)) = *((float*)&vec_C[J]+I);
+	  }
+       }
+    }
+ 
+    void dump_vec_f(const char * name, vector float vec){
+                printf("%s:\t", name);
+                for(int i =0; i< 4; i++){
+                    printf("%-12.4f", (float)vec[i]);
+                }
+                printf("\n");
+      }
+     void dump_acc(acc_t * acc, vector unsigned char* vec_C){
+        __builtin_mma_disassemble_acc(vec_C, acc);
+        for (int j = 0; j<4; j++) {
+                 for (int i = 0; i< 4; i++){
+                        printf("%-12.4f ", *((float*)&vec_C[j]+i));
+              }
+        printf("\n");
+        }
+     }
     template<typename VA>
     void packTranspose(const TA* a, int64_t lda, int rows, int cols, TA* vec) {
         int64_t i, j;
@@ -2497,19 +2523,34 @@ class tinyBLAS_PPC {
         __builtin_mma_xxsetaccz(&acc_2);
         __builtin_mma_xxsetaccz(&acc_3);
         for (int l = 0; l < k; l+=8) {
-            packTranspose<vector float>(A+(ii*lda)+l, lda, 8, 8, (TA*)vec_A);
-            packTranspose<vector float>(B+(jj*ldb)+l, ldb, 8, 8, (TA*)vec_B);
-            for(int x = 0; x < 16; x+=2) {
-                __builtin_mma_xvf32gerpp(&acc_0, (vec_t)vec_A[x], vec_B[x]);
-                __builtin_mma_xvf32gerpp(&acc_1, (vec_t)vec_A[x], vec_B[x+1]);
-                __builtin_mma_xvf32gerpp(&acc_2, (vec_t)vec_A[x+1], vec_B[x]);
-                __builtin_mma_xvf32gerpp(&acc_3, (vec_t)vec_A[x+1], vec_B[x+1]);
-            }
+	    for (int x = 0; x < 8; ++x) {
+		vec_A[2 * x]     = (vec_t)vec_xl(0, (float *)(A + (l + x) * lda + ii));
+		vec_A[2 * x + 1] = (vec_t)vec_xl(0, (float *)(A + (l + x) * lda + ii + 4));
+
+		vec_B[2 * x]     = (vec_t)vec_xl(0, (float *)(B + (l + x) * ldb + jj));
+		vec_B[2 * x + 1] = (vec_t)vec_xl(0, (float *)(B + (l + x) * ldb + jj + 4));
+             }
+
+            //packTranspose<vector float>(A+(ii*lda)+l, lda, 8, 8, (TA*)vec_A);
+            //packTranspose<vector float>(B+(jj*lda)+l, lda, 8, 8, (TA*)vec_B);
+	    for (int i = 0; i< 16; i++) {
+		    dump_vec_f("A", (vector float)vec_A[i]);
+		    dump_vec_f("B", (vector float)vec_B[i]);
+	    }
+	    for (int x = 0; x < 16; x += 2) {
+    		__builtin_mma_xvf32gerpp(&acc_0, vec_B[x], vec_A[x]);    
+    		__builtin_mma_xvf32gerpp(&acc_1, vec_B[x], vec_A[x+1]);
+    		__builtin_mma_xvf32gerpp(&acc_2, vec_B[x+1], vec_A[x]);
+    		__builtin_mma_xvf32gerpp(&acc_3, vec_B[x+1], vec_A[x+1]);
+	    }
+
+            printf("dumping acc_0 adfter l=%d\n", l);
+	    dump_acc(&acc_0, vec_C);
         }
-        SAVE_ACC(&acc_0, ii, jj);
-        SAVE_ACC(&acc_1, ii, jj+4);
-        SAVE_ACC(&acc_2, ii+4, jj);
-        SAVE_ACC(&acc_3, ii+4, jj+4);
+        SAVE_ACC(&acc_0, jj, ii );
+        SAVE_ACC(&acc_1, jj+4, ii);
+        SAVE_ACC(&acc_2, jj, ii+4);
+        SAVE_ACC(&acc_3, jj+4, ii+4);
     }
 
     void mnpack(int64_t m0, int64_t m, int64_t n0, int64_t n) {
@@ -2838,6 +2879,15 @@ bool llamafile_sgemm(const struct ggml_compute_params * params, int64_t m, int64
 #elif defined(__MMA__)
         if (k % 8)
             return false;
+	printf("Inside tinyblas\n");
+	float * Ap = (float*)A;
+	float * Bp = (float*)B;
+	for (int i = 0; i<( k*m); i++)
+		printf("%f\t", *(Ap++));
+	printf("\n*****************\n");
+	for (int i = 0; i<( k*n); i++)
+		printf("%f\t", *(Bp++));
+	printf("\n*****************\n");
         tinyBLAS_PPC<float, float, float> tb{
             k, (const float *)A, lda,
             (const float *)B, ldb,
