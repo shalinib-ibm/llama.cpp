@@ -1566,16 +1566,16 @@ class tinyBLAS_Q0_PPC {
           }
        }
     }
-
     template<int size>
     inline void compute(acc_t* ACC, int c_idx, int s_idx, std::array<int, size>& comparray, vector float* vs, vector float* fin_res) {
        vector signed int vec_C[4];
-       vector float CA[4] = {0};
+       //vector float CA[4] = {0};
        vector float res[4] = {0};
        __builtin_mma_disassemble_acc(vec_C, ACC);
        for (int i = 0; i < 4; i++) {
-          CA[i] = vec_splats((float)(((double)comparray[c_idx+i]) * -128.0));
-          res[i] = vec_add(vec_ctf(vec_C[i], 0), CA[i]);
+          //CA[i] = vec_splats((float)(((double)comparray[c_idx+i]) * -128.0));
+          //res[i] = vec_add(vec_ctf(vec_C[i], 0), CA[i]);
+          res[i] = vec_ctf(vec_C[i], 0);
           fin_res[s_idx+i] = vec_madd(res[i], vs[s_idx+i], fin_res[s_idx+i]);
        }
     }
@@ -1971,7 +1971,7 @@ class tinyBLAS_Q0_PPC {
     }
 
     template<typename VA, typename VB>
-    void packNormal(const TB* a, int64_t lda, int rows, int cols, VA* vec, bool flip) {
+    void packNormal(const TB* a, int64_t lda, int rows, int cols, VA* vec/*, bool flip*/) {
         int64_t i, j;
         TB *aoffset = NULL;
         VA *vecOffset = NULL;
@@ -1981,9 +1981,9 @@ class tinyBLAS_Q0_PPC {
         VB c1[2] = {0}, c2[2] = {0}, c3[2] = {0}, c4[2]={0};
         VB c5[2] = {0}, c6[2] = {0}, c7[2] = {0}, c8[2]={0};
         VB t1, t2, t3, t4, t5, t6, t7, t8;
-        vector unsigned char xor_vector;
-        uint8_t flip_vec = 0x80;
-        xor_vector = vec_splats(flip_vec);
+        //vector unsigned char xor_vector;
+        //uint8_t flip_vec = 0x80;
+        //xor_vector = vec_splats(flip_vec);
         vector unsigned char swiz1 = {0, 1, 2, 3, 4, 5, 6, 7, 16, 17, 18, 19, 20, 21, 22, 23};
         vector unsigned char swiz2 = {8, 9, 10, 11, 12, 13, 14, 15, 24, 25, 26, 27, 28, 29, 30, 31};
         vector unsigned char swiz3 = {0, 1, 2, 3, 8, 9, 10, 11, 16, 17, 18, 19, 24, 25, 26, 27};
@@ -2033,12 +2033,12 @@ class tinyBLAS_Q0_PPC {
                     t6 = vec_perm(t1, t3, swiz4);
                     t7 = vec_perm(t2, t4, swiz3);
                     t8 = vec_perm(t2, t4, swiz4);
-                    if (flip == true) {
+                    /*if (flip == true) {
                         t5 = vec_xor(t5, xor_vector);
                         t6 = vec_xor(t6, xor_vector);
                         t7 = vec_xor(t7, xor_vector);
                         t8 = vec_xor(t8, xor_vector);
-                    }
+                    }*/
                     vec_xst(t5, 0, vecOffset);
                     vec_xst(t6, 0, vecOffset+16);
                     vec_xst(t7, 0, vecOffset+32);
@@ -2052,12 +2052,12 @@ class tinyBLAS_Q0_PPC {
                     t6 = vec_perm(t1, t3, swiz4);
                     t7 = vec_perm(t2, t4, swiz3);
                     t8 = vec_perm(t2, t4, swiz4);
-                    if (flip == true) {
+                    /*if (flip == true) {
                         t5 = vec_xor(t5, xor_vector);
                         t6 = vec_xor(t6, xor_vector);
                         t7 = vec_xor(t7, xor_vector);
                         t8 = vec_xor(t8, xor_vector);
-                    }
+                    }*/
                     vec_xst(t5, 0, vecOffset+64);
                     vec_xst(t6, 0, vecOffset+80);
                     vec_xst(t7, 0, vecOffset+96);
@@ -2071,12 +2071,12 @@ class tinyBLAS_Q0_PPC {
                     t6 = vec_perm(t1, t3, swiz4);
                     t7 = vec_perm(t2, t4, swiz3);
                     t8 = vec_perm(t2, t4, swiz4);
-                    if (flip == true) {
+                    /*if (flip == true) {
                         t5 = vec_xor(t5, xor_vector);
                         t6 = vec_xor(t6, xor_vector);
                         t7 = vec_xor(t7, xor_vector);
                         t8 = vec_xor(t8, xor_vector);
-                    }
+                    }*/
                     vec_xst(t5, 0, vecOffset+128);
                     vec_xst(t6, 0, vecOffset+144);
                     vec_xst(t7, 0, vecOffset+160);
@@ -2090,12 +2090,12 @@ class tinyBLAS_Q0_PPC {
                     t6 = vec_perm(t1, t3, swiz4);
                     t7 = vec_perm(t2, t4, swiz3);
                     t8 = vec_perm(t2, t4, swiz4);
-                    if (flip == true) {
+                    /*if (flip == true) {
                         t5 = vec_xor(t5, xor_vector);
                         t6 = vec_xor(t6, xor_vector);
                         t7 = vec_xor(t7, xor_vector);
                         t8 = vec_xor(t8, xor_vector);
-                    }
+                    }*/
                     vec_xst(t5, 0, vecOffset+192);
                     vec_xst(t6, 0, vecOffset+208);
                     vec_xst(t7, 0, vecOffset+224);
@@ -2145,12 +2145,12 @@ class tinyBLAS_Q0_PPC {
                     t6 = vec_perm(t1, t3, swiz4);
                     t7 = vec_perm(t2, t4, swiz3);
                     t8 = vec_perm(t2, t4, swiz4);
-                    if (flip == true) {
+                    /*if (flip == true) {
                        t5 = vec_xor(t5, xor_vector);
                        t6 = vec_xor(t6, xor_vector);
                        t7 = vec_xor(t7, xor_vector);
                        t8 = vec_xor(t8, xor_vector);
-                    }
+                    }*/
                     vec_xst(t5, 0, vecOffset);
                     vec_xst(t6, 0, vecOffset+16);
                     vec_xst(t7, 0, vecOffset+32);
@@ -2164,12 +2164,12 @@ class tinyBLAS_Q0_PPC {
                     t6 = vec_perm(t1, t3, swiz4);
                     t7 = vec_perm(t2, t4, swiz3);
                     t8 = vec_perm(t2, t4, swiz4);
-                    if (flip == true) {
+                    /*if (flip == true) {
                        t5 = vec_xor(t5, xor_vector);
                        t6 = vec_xor(t6, xor_vector);
                        t7 = vec_xor(t7, xor_vector);
                        t8 = vec_xor(t8, xor_vector);
-                    }
+                    }*/
                     vec_xst(t5, 0, vecOffset+64);
                     vec_xst(t6, 0, vecOffset+80);
                     vec_xst(t7, 0, vecOffset+96);
@@ -2208,12 +2208,12 @@ class tinyBLAS_Q0_PPC {
                     t6 = vec_perm(t1, t3, swiz4);
                     t7 = vec_perm(t2, t4, swiz3);
                     t8 = vec_perm(t2, t4, swiz4);
-                    if (flip == true) {
+                    /*if (flip == true) {
                        t5 = vec_xor(t5, xor_vector);
                        t6 = vec_xor(t6, xor_vector);
                        t7 = vec_xor(t7, xor_vector);
                        t8 = vec_xor(t8, xor_vector);
-                    }
+                    }*/
                     vec_xst(t5, 0, vecOffset);
                     vec_xst(t6, 0, vecOffset+16);
                     vec_xst(t7, 0, vecOffset+32);
@@ -2227,12 +2227,12 @@ class tinyBLAS_Q0_PPC {
                     t6 = vec_perm(t1, t3, swiz4);
                     t7 = vec_perm(t2, t4, swiz3);
                     t8 = vec_perm(t2, t4, swiz4);
-                    if (flip == true) {
+                    /*if (flip == true) {
                        t5 = vec_xor(t5, xor_vector);
                        t6 = vec_xor(t6, xor_vector);
                        t7 = vec_xor(t7, xor_vector);
                        t8 = vec_xor(t8, xor_vector);
-                    }
+                    }*/
                     vec_xst(t5, 0, vecOffset+64);
                     vec_xst(t6, 0, vecOffset+80);
                     vec_xst(t7, 0, vecOffset+96);
@@ -2415,9 +2415,9 @@ class tinyBLAS_Q0_PPC {
             if (std::is_same_v<TA, block_q4_0>) {
                packNormalInt4<int8_t, vector signed char, 4>((A+(ii*lda)+l), lda, 4, 4, (int8_t*)vec_A, comparray);
             } else {
-               packNormal<int8_t, vector signed char>((const TB*)(A+(ii*lda)+l), lda, 4, 8, (int8_t*)vec_A, false);
+               packNormal<int8_t, vector signed char>((const TB*)(A+(ii*lda)+l), lda, 4, 8, (int8_t*)vec_A/*, false*/);
             }
-            packNormal<uint8_t, vector unsigned char>((B+(jj*ldb)+l), ldb, 8, 8, (uint8_t*)vec_B, true);
+            packNormal<uint8_t, vector unsigned char>((B+(jj*ldb)+l), ldb, 8, 8, (uint8_t*)vec_B/*, true*/);
             for(int x = 0; x < 8; x++) {
                 __builtin_mma_xvi8ger4pp(&acc_0, vec_A[x], vec_B[x]);
                 __builtin_mma_xvi8ger4pp(&acc_1, vec_A[x], vec_B[x+8]);
@@ -2428,7 +2428,7 @@ class tinyBLAS_Q0_PPC {
                     *((float*)&vs[I+4]+J) = (unhalf((A+((ii+I)*lda)+l)->d) * unhalf((B+((jj+J+4)*ldb)+l)->d));
                 }
             }
-            if (!isAblock_q4) {
+            /*if (!isAblock_q4) {
                 auto aoffset = A+(ii*lda)+l;
                 for (int i = 0; i < 4; i++) {
                     comparray[i] = 0;
@@ -2439,7 +2439,7 @@ class tinyBLAS_Q0_PPC {
                     comparray[i] = ca;
                     aoffset += lda;
                 }
-            }
+            }*/
             compute<4>(&acc_0, 0, 0, comparray, vs, fin_res);
             compute<4>(&acc_1, 0, 4, comparray, vs, fin_res);
         }
@@ -2460,9 +2460,9 @@ class tinyBLAS_Q0_PPC {
             if (std::is_same_v<TA, block_q4_0>) {
                packNormalInt4<int8_t, vector signed char, 8>((A+(ii*lda)+l), lda, 8, 4, (int8_t*)vec_A, comparray);
             } else {
-               packNormal<int8_t, vector signed char>((const TB*)(A+(ii*lda)+l), lda, 8, 8, (int8_t*)vec_A, false);
+               packNormal<int8_t, vector signed char>((const TB*)(A+(ii*lda)+l), lda, 8, 8, (int8_t*)vec_A/*, false*/);
             }
-            packNormal<uint8_t, vector unsigned char>((B+(jj*ldb)+l), ldb, 4, 8, (uint8_t*)vec_B, true);
+            packNormal<uint8_t, vector unsigned char>((B+(jj*ldb)+l), ldb, 4, 8, (uint8_t*)vec_B/*, true*/);
             for(int x = 0; x < 8; x++) {
                 __builtin_mma_xvi8ger4pp(&acc_0, vec_A[x], vec_B[x]);
                 __builtin_mma_xvi8ger4pp(&acc_1, vec_A[x+8], vec_B[x]);
@@ -2472,7 +2472,7 @@ class tinyBLAS_Q0_PPC {
                     *((float*)&vs[I]+J) = (unhalf((A+((ii+I)*lda)+l)->d) * unhalf((B+((jj+J)*ldb)+l)->d));
                 }
             }
-            if (!isAblock_q4) {
+            /*if (!isAblock_q4) {
                 auto aoffset = A+(ii*lda)+l;
                 for (int i = 0; i < 8; i++) {
                     comparray[i] = 0;
@@ -2483,7 +2483,7 @@ class tinyBLAS_Q0_PPC {
                     comparray[i] = ca;
                     aoffset += lda;
                 }
-            }
+            }*/
             compute<8>(&acc_0, 0, 0, comparray, vs, fin_res);
             compute<8>(&acc_1, 4, 4, comparray, vs, fin_res);
         }
@@ -2506,9 +2506,9 @@ class tinyBLAS_Q0_PPC {
             if (std::is_same_v<TA, block_q4_0>) {
                packNormalInt4<int8_t, vector signed char, 8>((A+(ii*lda)+l), lda, 8, 4, (int8_t*)vec_A, comparray);
             } else {
-               packNormal<int8_t, vector signed char>((const TB*)(A+(ii*lda)+l), lda, 8, 8, (int8_t*)vec_A, false);
+               packNormal<int8_t, vector signed char>((const TB*)(A+(ii*lda)+l), lda, 8, 8, (int8_t*)vec_A/*, false*/);
             }
-            packNormal<uint8_t, vector unsigned char>((B+(jj*ldb)+l), ldb, 8, 8, (uint8_t*)vec_B, true);
+            packNormal<uint8_t, vector unsigned char>((B+(jj*ldb)+l), ldb, 8, 8, (uint8_t*)vec_B/*, true*/);
             for(int x = 0; x < 8; x++) {
                 __builtin_mma_xvi8ger4pp(&acc_0, vec_A[x], vec_B[x]);
                 __builtin_mma_xvi8ger4pp(&acc_1, vec_A[x+8], vec_B[x]);
@@ -2521,7 +2521,7 @@ class tinyBLAS_Q0_PPC {
                     *((float*)&vs[I+8]+J) = (unhalf((A+((ii+I)*lda)+l)->d) * unhalf((B+((jj+J+4)*ldb)+l)->d));
                 }
             }
-            if (!isAblock_q4) {
+            /*if (!isAblock_q4) {
                 auto aoffset = A+(ii*lda)+l;
                 for (int i = 0; i < 8; i++) {
                     comparray[i] = 0;
@@ -2532,7 +2532,7 @@ class tinyBLAS_Q0_PPC {
                     comparray[i] = ca;
                     aoffset += lda;
                 }
-            }
+            }*/
             compute<8>(&acc_0, 0, 0, comparray, vs, fin_res);
             compute<8>(&acc_1, 4, 4, comparray, vs, fin_res);
             compute<8>(&acc_2, 0, 8, comparray, vs, fin_res);
@@ -2576,9 +2576,9 @@ class tinyBLAS_Q0_PPC {
                 if (isAblock_q4) {
                    packNormalInt4<int8_t, vector signed char, 4>((A+(ii*lda)+l), lda, RM, 4, (int8_t*)vec_A, comparray);
                 } else {
-                   packNormal<int8_t, vector signed char>((const TB*)(A+(ii*lda)+l), lda, RM, 8, (int8_t*)vec_A, false);
+                   packNormal<int8_t, vector signed char>((const TB*)(A+(ii*lda)+l), lda, RM, 8, (int8_t*)vec_A/*, false*/);
                 }
-                packNormal<uint8_t, vector unsigned char>((B+(jj*ldb)+l), ldb, RN, 8, (uint8_t*)vec_B, true);
+                packNormal<uint8_t, vector unsigned char>((B+(jj*ldb)+l), ldb, RN, 8, (uint8_t*)vec_B/*, true*/);
                 for(int x = 0; x < 8; x+=4) {
                     __builtin_mma_xvi8ger4pp(&acc_0, vec_A[x], vec_B[x]);
                     __builtin_mma_xvi8ger4pp(&acc_0, vec_A[x+1], vec_B[x+1]);
@@ -2591,7 +2591,7 @@ class tinyBLAS_Q0_PPC {
                     }
                 }
                 __builtin_mma_disassemble_acc(vec_C, &acc_0);
-                if (!isAblock_q4) {
+                /*if (!isAblock_q4) {
                     auto aoffset = A+(ii*lda)+l;
                     for (int i = 0; i < RM; i++) {
                         comparray[i] = 0;
@@ -2602,10 +2602,10 @@ class tinyBLAS_Q0_PPC {
                         comparray[i] = ca;
                         aoffset += lda;
                     }
-                }
+                }*/
                 for (int i = 0; i < RM; i++) {
-                    CA[i] = vec_splats((float)(((double)comparray[i]) * -128.0));
-                    res[i] = vec_add(vec_ctf(vec_C[i], 0), CA[i]);
+                    //CA[i] = vec_splats((float)(((double)comparray[i]) * -128.0));
+                    res[i] = vec_ctf(vec_C[i], 0);
                     fin_res[i] = vec_madd(res[i], vs[i], fin_res[i]);
                 }
             }
