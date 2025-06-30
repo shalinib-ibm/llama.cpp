@@ -1963,6 +1963,7 @@ class LlamaModel(TextModel):
     _experts: list[dict[str, Tensor]] | None = None
 
     def modify_tensors(self, data_torch: Tensor, name: str, bid: int | None) -> Iterable[tuple[str, Tensor]]:
+        print(f"[GGUF-CONVERT] modifying tensor {name}")
         n_head = self.hparams["num_attention_heads"]
         n_kv_head = self.hparams.get("num_key_value_heads")
         is_vision_tensor = "vision_tower" in name \
@@ -1985,6 +1986,12 @@ class LlamaModel(TextModel):
             if name.endswith(("k_proj.weight", "k_proj.bias")):
                 data_torch = LlamaModel.permute(data_torch, n_head, n_kv_head)
 
+        #if name.endswith(("attn.k_proj.weight", "attn.o_proj.weight", "attn.v_proj.weight","attn.q_proj.weight","up_proj.weight", "gate_proj.weight", "down_proj.weight")):
+        if name.endswith(( "attn.o_proj.weight", "up_proj.weight", "gate_proj.weight")):
+            print(f"[GGUF-CONVERT] Transposing {name}")
+            data_torch = data_torch.T.contiguous()
+
+        
         # process the experts separately
         if name.find("block_sparse_moe.experts") != -1:
             n_experts = self.hparams["num_local_experts"]
@@ -2018,8 +2025,10 @@ class LlamaModel(TextModel):
                 return tensors
             else:
                 return []
-
-        return [(self.map_tensor_name(name), data_torch)]
+        mapped_name = self.map_tensor_name(name)
+        print(f"[GGUF-CONVERT] Mapping: {name}  -->  {mapped_name}")
+        print(f"[GGUF-CONVERT] Final shape for {mapped_name}: {data_torch.shape}")
+        return [(mapped_name, data_torch)]
 
     def generate_extra_tensors(self) -> Iterable[tuple[str, Tensor]]:
         if rope_scaling := self.find_hparam(["rope_scaling"], optional=True):

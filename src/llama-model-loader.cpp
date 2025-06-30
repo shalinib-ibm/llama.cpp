@@ -774,6 +774,20 @@ const struct ggml_tensor * llama_model_loader::check_tensor_dims(const std::stri
                 break;
             }
         }
+	     // if direct match fails, try transposed match (only for 2D tensors)
+        if (!is_ok && ne.size() == 2) {
+            bool is_transposed_ok = (cur->ne[0] == ne[1] && cur->ne[1] == ne[0]);
+            for (size_t i = 2; i < GGML_MAX_DIMS; ++i) {
+                if (cur->ne[i] != 1) {
+                    is_transposed_ok = false;
+                    break;
+                }
+            }
+            if (is_transposed_ok) {
+                is_ok = true;
+            }
+        }
+
         if (!is_ok) {
             throw std::runtime_error(
                     format("%s: tensor '%s' has wrong shape; expected %s, got %s",

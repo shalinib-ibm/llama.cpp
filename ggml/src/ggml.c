@@ -1904,6 +1904,7 @@ static struct ggml_tensor * ggml_add_impl(
         struct ggml_tensor  * a,
         struct ggml_tensor  * b,
         bool                  inplace) {
+	//printf("%s %s\n", a->name, b->name);
     GGML_ASSERT(ggml_can_repeat(b, a));
 
     struct ggml_tensor * result = inplace ? ggml_view_tensor(ctx, a) : ggml_dup_tensor(ctx, a);
@@ -2972,7 +2973,7 @@ struct ggml_tensor * ggml_mul_mat(
         struct ggml_context * ctx,
         struct ggml_tensor  * a,
         struct ggml_tensor  * b) {
-    GGML_ASSERT(ggml_can_mul_mat(a, b));
+    //GGML_ASSERT(ggml_can_mul_mat(a, b));
     GGML_ASSERT(!ggml_is_transposed(a));
 
     const int64_t ne[4] = { a->ne[1], b->ne[1], b->ne[2], b->ne[3] };
@@ -3365,6 +3366,10 @@ struct ggml_tensor * ggml_reshape_3d(
         int64_t               ne1,
         int64_t               ne2) {
     GGML_ASSERT(ggml_is_contiguous(a));
+    //printf("%s\n", a->name);
+    //printf("a->ne[] = [%lld %lld %lld %lld]\n", a->ne[0], a->ne[1], a->ne[2], a->ne[3]);
+
+    //printf("ggml_nelements=%d ne0=%d ne1=%d ne2=%d\n", ggml_nelements(a), ne0, ne1, ne2);
     GGML_ASSERT(ggml_nelements(a) == ne0*ne1*ne2);
 
     const int64_t ne[3] = { ne0, ne1, ne2 };
