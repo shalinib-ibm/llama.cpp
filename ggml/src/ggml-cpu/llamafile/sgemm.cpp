@@ -1541,7 +1541,7 @@ class tinyBLAS_BF16_PPC {
        } else if constexpr(RM == 8 && RN == 4) {
           KERNEL_8x4(ii,jj);
        } else {
-          static_assert(false, "RN/RM values not supported");
+          assert(false && "RN/RM values not supported");
        }
     }
 
@@ -2654,7 +2654,7 @@ class tinyBLAS_Q0_PPC {
        } else if constexpr(RM == 8 && RN == 8) {
           KERNEL_8x8(ii,jj);
        } else {
-          static_assert(false, "RN/RM values not supported");
+          assert(false && "RN/RM values not supported");
        }
     }
 
