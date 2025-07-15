@@ -1234,11 +1234,45 @@ void ggml_compute_forward_mul_mat(
     const int64_t r3 = ne13 / ne03;
 
     const bool src1_cont = ggml_is_contiguous(src1);
-
+    bool is_transposed = false;
     if (src1_cont) {
-        for (int64_t i13 = 0; i13 < ne13; i13++)
-            for (int64_t i12 = 0; i12 < ne12; i12++)
+	    const char * name = src0->name;
+	    const char * name1 = src1->name;
+
+    if (name && 
+    	strstr(name, "attn_output.weight") ||
+    	strstr(name, "ffn_up.weight")   ||
+    	strstr(name, "ffn_gate.weight")) {
+    	printf("[llamafile_sgemm] src0 %s was transposed during HF->GGUF conversion\n", name);
+	is_transposed = true;
+	//is_transposed = false;
+    }
+    if (name1 && 
+    	strstr(name1, "attn_output.weight") ||
+    	strstr(name1, "ffn_up.weight")   ||
+    	strstr(name1, "ffn_gate.weight")) {
+    	printf("[llamafile_sgemm] src1 %s was transposed during HF->GGUF conversion\n", name1);
+    }
+	printf("\n==> llamafile_sgemm call: %s * %s\n", src0->name, src1->name);
+	printf("A shape: [%lld x %lld]  B shape: [%lld x %lld]\n", src0->ne[1], src0->ne[0], src1->ne[1], src1->ne[0]);
+
+        for (int64_t i13 = 0; i13 < ne13; i13++) {
+            for (int64_t i12 = 0; i12 < ne12; i12++) {
+		    if (is_transposed) {
                 if (!llamafile_sgemm(params,
+                                     ne00/ggml_blck_size(src0->type), ne11, ne01,///ggml_blck_size(src0->type),
+                                     (const char *)src0->data + i12/r2*nb02 + i13/r3*nb03,
+                                     ne01,
+                                     (const char *)src1->data + i12*nb12 + i13*nb13,
+                                     nb11/ggml_type_size(src1->type),
+                                     (char *)dst->data + i12*nb2 + i13*nb3,
+                                     ne00/ggml_blck_size(src0->type),
+                                     src0->type,
+                                     src1->type,
+                                     dst->type, is_transposed))
+                    goto UseGgmlGemm1;
+		    } else {
+			    if (!llamafile_sgemm(params,
                                      ne01, ne11, ne00/ggml_blck_size(src0->type),
                                      (const char *)src0->data + i12/r2*nb02 + i13/r3*nb03,
                                      nb01/ggml_type_size(src0->type),
@@ -1248,8 +1282,11 @@ void ggml_compute_forward_mul_mat(
                                      nb1/ggml_type_size(dst->type),
                                      src0->type,
                                      src1->type,
-                                     dst->type))
+                                     dst->type, false))
                     goto UseGgmlGemm1;
+		    }
+	    }
+	}
         return;
     }
 UseGgmlGemm1:;
@@ -1304,8 +1341,9 @@ UseGgmlGemm1:;
         const void* wdata = (src1->type == vec_dot_type) ? src1->data : params->wdata;
         const size_t row_size = ggml_row_size(vec_dot_type, ne10);
 
-        for (int64_t i13 = 0; i13 < ne13; i13++)
-            for (int64_t i12 = 0; i12 < ne12; i12++)
+        for (int64_t i13 = 0; i13 < ne13; i13++) {
+            for (int64_t i12 = 0; i12 < ne12; i12++) {
+		    //printf("calling from 2nd site here \n");
                 if (!llamafile_sgemm(params,
                                      ne01, ne11, ne00/ggml_blck_size(src0->type),
                                      (const char *)src0->data + i12/r2*nb02 + i13/r3*nb03,
@@ -1316,8 +1354,10 @@ UseGgmlGemm1:;
                                      nb1/ggml_type_size(dst->type),
                                      src0->type,
                                      vec_dot_type,
-                                     dst->type))
+                                     dst->type, false))
                     goto UseGgmlGemm2;
+	    }
+	}
         return;
     }
 UseGgmlGemm2:;

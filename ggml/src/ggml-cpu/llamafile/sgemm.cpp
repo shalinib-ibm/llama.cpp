@@ -2695,11 +2695,13 @@ class tinyBLAS_PPC {
                 const TA *A, int64_t lda,
                 const TB *B, int64_t ldb,
                 TC *C, int64_t ldc,
-                int ith, int nth)
-        : A(A), B(B), C(C), k(k), lda(lda), ldb(ldb), ldc(ldc), ith(ith), nth(nth) {
+                int ith, int nth, int64_t m_orig, bool is_transposed)
+        : A(A), B(B), C(C), k(k), lda(lda), ldb(ldb), ldc(ldc), ith(ith), nth(nth), is_transposed(is_transposed){
+		m_orig = 0;
     }
 
     void matmul(int64_t m, int64_t n) {
+	    m_orig = m;
        mnpack(0, m, 0, n);
     }
 
@@ -2957,7 +2959,13 @@ class tinyBLAS_PPC {
         acc_t acc_0;
         __builtin_mma_xxsetaccz(&acc_0);
         for (int l = 0; l < k; l+=4) {
-            packTranspose<vector float>(A+(ii*lda)+l, lda, 4, 4, (TA*)vec_A);
+	    if (is_transposed) {
+	       for (int x = 0; x< 4; x++) {
+		    vec_A[x] = (vec_t)vec_xl(0, (float*)A+ (l+x)*m_orig+ii);
+	    	}
+	    } else {
+            	 packTranspose<vector float>(A+(ii*lda)+l, lda, 4, 4, (TA*)vec_A);
+	    }
             packTranspose<vector float>(B+(jj*ldb)+l, ldb, 4, 4, (TA*)vec_B);
             __builtin_mma_xvf32gerpp(&acc_0, vec_A[0], vec_B[0]);
             __builtin_mma_xvf32gerpp(&acc_0, vec_A[1], vec_B[1]);
@@ -2973,7 +2981,13 @@ class tinyBLAS_PPC {
         __builtin_mma_xxsetaccz(&acc_0);
         __builtin_mma_xxsetaccz(&acc_1);
         for (int64_t l = 0; l < k; l+=4) {
-            packTranspose<vector float>(A+(ii*lda)+l, lda, 4, 4, (TA*)vec_A);
+	    if (is_transposed) {
+		    for (int x =0; x< 4; x++) {
+			    vec_A[x] = (vec_t) vec_xl(0, (float*)A+(l+x)*m_orig+ii);
+		    }
+	    }else{
+	    	    packTranspose<vector float>(A+(ii*lda)+l, lda, 4, 4, (TA*)vec_A);
+	    }
             packTranspose<vector float>(B+(jj*ldb)+l, ldb, 8, 4, (TA*)vec_B);
             __builtin_mma_xvf32gerpp(&acc_0, vec_A[0], (vec_t)vec_B[0]);
             __builtin_mma_xvf32gerpp(&acc_1, vec_A[0], (vec_t)vec_B[1]);
@@ -2994,7 +3008,14 @@ class tinyBLAS_PPC {
         __builtin_mma_xxsetaccz(&acc_0);
         __builtin_mma_xxsetaccz(&acc_1);
         for (int64_t l = 0; l < k; l+=4) {
+            if (is_transposed) {
+	       for (int x = 0; x <4; x++) {
+		    vec_A[2*x]   = (vec_t)vec_xl(0, (float*)A+(l+x)*m_orig+ii);
+               	    vec_A[2*x+1]  = (vec_t)vec_xl(0, (float*)A+(l+x)*m_orig+ii+4);
+	       }
+	    } else {
             packTranspose<vector float>(A+(ii*lda)+l, lda, 8, 4, (TA*)vec_A);
+	    }
             packTranspose<vector float>(B+(jj*ldb)+l, ldb, 4, 4, (TA*)vec_B);
             __builtin_mma_xvf32gerpp(&acc_0, (vec_t)vec_A[0], vec_B[0]);
             __builtin_mma_xvf32gerpp(&acc_1, (vec_t)vec_A[1], vec_B[0]);
@@ -3017,7 +3038,14 @@ class tinyBLAS_PPC {
         __builtin_mma_xxsetaccz(&acc_2);
         __builtin_mma_xxsetaccz(&acc_3);
         for (int l = 0; l < k; l+=8) {
+	    if (is_transposed) {
+               for (int x = 0; x <8; x++) {
+                    vec_A[2*x]   = (vec_t)vec_xl(0, (float*)A+(l+x)*m_orig+ii);
+                    vec_A[2*x+1]  = (vec_t)vec_xl(0, (float*)A+(l+x)*m_orig+ii+4);
+               }
+            } else {
             packTranspose<vector float>(A+(ii*lda)+l, lda, 8, 8, (TA*)vec_A);
+            }
             packTranspose<vector float>(B+(jj*ldb)+l, ldb, 8, 8, (TA*)vec_B);
             for(int x = 0; x < 16; x+=2) {
                 __builtin_mma_xvf32gerpp(&acc_0, (vec_t)vec_A[x], vec_B[x]);
@@ -3205,24 +3233,31 @@ class tinyBLAS_PPC {
                  * broadcasted, instead of using packing routine to prepack the
                  * matrix elements.
                  */
-                if (RM == 1) {
-                    TA* a = const_cast<TA*>(A+(ii)*lda+l);
+		 if (is_transposed) {
+		    for (int x = 0; x< 4; x++) {
+			vec_A[x] = (vec_t)vec_xl(0, (float*)A+(l+x)*m_orig+ii);
+		    }
                     packTranspose<vector float>(B+(jj*ldb)+l, ldb, RN, 4, (TA*)vec_B);
-                    vec_A[0] = (vec_t)vec_xl(0,a);
-                    vec_A[1] = (vec_t)vec_splats(*((TA*)&vec_A+1));
-                    vec_A[2] = (vec_t)vec_splats(*((TA*)&vec_A+2));
-                    vec_A[3] = (vec_t)vec_splats(*((TA*)&vec_A+3));
-                } else if (RN == 1) {
-                    packTranspose<vector float>(A+(ii*lda)+l, lda, RM, 4, (TA*)vec_A);
-                    TB* b = const_cast<TB*>(B+(jj)*ldb+l);
-                    vec_B[0] = (vec_t)vec_xl(0,b);
-                    vec_B[1] = (vec_t)vec_splats(*((TB*)&vec_B+1));
-                    vec_B[2] = (vec_t)vec_splats(*((TB*)&vec_B+2));
-                    vec_B[3] = (vec_t)vec_splats(*((TB*)&vec_B+3));
-                } else {
-                    packTranspose<vector float>(A+(ii*lda)+l, lda, RM, 4, (TA*)vec_A);
-                    packTranspose<vector float>(B+(jj*ldb)+l, ldb, RN, 4, (TA*)vec_B);
-                }
+		    } else {
+                	if (RM == 1) {
+                    	TA* a = const_cast<TA*>(A+(ii)*lda+l);
+                    	packTranspose<vector float>(B+(jj*ldb)+l, ldb, RN, 4, (TA*)vec_B);
+                    	vec_A[0] = (vec_t)vec_xl(0,a);
+                    	vec_A[1] = (vec_t)vec_splats(*((TA*)&vec_A+1));
+                    	vec_A[2] = (vec_t)vec_splats(*((TA*)&vec_A+2));
+                    	vec_A[3] = (vec_t)vec_splats(*((TA*)&vec_A+3));
+                	} else if (RN == 1) {
+                    	packTranspose<vector float>(A+(ii*lda)+l, lda, RM, 4, (TA*)vec_A);
+                    	TB* b = const_cast<TB*>(B+(jj)*ldb+l);
+                    	vec_B[0] = (vec_t)vec_xl(0,b);
+                    	vec_B[1] = (vec_t)vec_splats(*((TB*)&vec_B+1));
+                    	vec_B[2] = (vec_t)vec_splats(*((TB*)&vec_B+2));
+                    	vec_B[3] = (vec_t)vec_splats(*((TB*)&vec_B+3));
+                	} else {
+                    	packTranspose<vector float>(A+(ii*lda)+l, lda, RM, 4, (TA*)vec_A);
+                    	packTranspose<vector float>(B+(jj*ldb)+l, ldb, RN, 4, (TA*)vec_B);
+                	}
+		    }
                 __builtin_mma_xvf32gerpp(&acc_0, vec_A[0], vec_B[0]);
                 __builtin_mma_xvf32gerpp(&acc_0, vec_A[1], vec_B[1]);
                 __builtin_mma_xvf32gerpp(&acc_0, vec_A[2], vec_B[2]);
@@ -3274,6 +3309,8 @@ class tinyBLAS_PPC {
     const int64_t ldc;
     const int ith;
     const int nth;
+    int64_t m_orig;
+    bool is_transposed;
 };
 #endif
 } // namespace
@@ -3310,13 +3347,16 @@ class tinyBLAS_PPC {
  */
 bool llamafile_sgemm(const struct ggml_compute_params * params, int64_t m, int64_t n, int64_t k,
                      const void *A, int64_t lda, const void *B, int64_t ldb, void *C,
-                     int64_t ldc, int Atype, int Btype, int Ctype) {
-
+                     int64_t ldc, int Atype, int Btype, int Ctype, bool is_transposed) {
+    printf("m=%ld n=%ld k=%ld lda=%ld  ldb=%ld ldc=%ld\n", m, n, k, lda, ldb, ldc);
     assert(m >= 0);
     assert(n >= 0);
     assert(k >= 0);
-    assert(lda >= k);
-    assert(ldb >= k);
+   /* if (is_transposed) 
+    	assert(lda >= m);
+    else*/
+	//assert(lda >= k);
+    //assert(ldb >= k);
     assert(ldc >= m);
     assert(params->nth > 0);
     assert(params->ith < params->nth);
@@ -3366,12 +3406,58 @@ bool llamafile_sgemm(const struct ggml_compute_params * params, int64_t m, int64
 #elif defined(__MMA__)
         if (k % 8)
             return false;
+	//if (is_transposed)
+		//printf("A was transposed during GGUF; m = %d n = %d k = %d\n", m, n, k);
+	float * Ap = (float*)A;
+	float * Bp = (float*)B;
+	float * Cp = (float*)C;
+	printf("Matrix AT in column major\n");
+	for (int r = 0; r < k; r ++) {
+		printf("| ");
+		for (int c = 0; c< m; c++) {
+			printf("%.2f ", Ap[c*k + r]);
+		}
+		printf(" |\n");
+	}
+	printf("A memory layout n");
+	for (int i = 0; i < (m*k); i++){
+		printf("%.2f ", *(Ap++));
+	}
+	printf("\n");
+	printf("B in column major\n");
+	for (int r = 0; r < k; r ++) {
+		printf("| ");
+		for (int c = 0; c< n; c++) {
+			printf("%.2f ", Bp[c*k + r]);
+		}
+		printf(" |\n");
+	}
+
+	printf("B memory layout n");
+	for (int i = 0; i < (n*k); i++){
+		printf("%.2f ", *(Bp++));
+	}
+	printf("\n");
         tinyBLAS_PPC<float, float, float> tb{
             k, (const float *)A, lda,
             (const float *)B, ldb,
             (float *)C, ldc,
-            params->ith, params->nth};
+            params->ith, params->nth, m, is_transposed};
         tb.matmul(m, n);
+	printf("C Matrix\n");
+	for (int r = 0; r < m; r ++) {
+		printf("| ");
+		for (int c = 0; c< n; c++) {
+			printf("%.2f ", Cp[c*m + r]);
+		}
+		printf(" |\n");
+	}
+
+	for (int i = 0; i < (m*n); i++){
+		printf("%.2f ", *(Cp++));
+	}
+	printf("\n");
+	//printf("completd llamafile_Sgemm\n");
         return true;
 #else
         return false;
