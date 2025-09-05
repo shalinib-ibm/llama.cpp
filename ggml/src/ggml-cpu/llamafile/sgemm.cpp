@@ -2351,11 +2351,48 @@ class tinyBLAS_Q0_PPC {
                 mnpack(0, m, n_aligned, n);
             }
         } else {*/
+            debug_print_q8_0((const block_q8_0*)A, lda, m);
+            debug_print_q8_0((const block_q8_0*)B, ldb, n);
             mnpack(0, m, 0, n);
         //}
     }
 
   private:
+    void debug_print_q8_0(const block_q8_0 *B, int ldb, int n) {
+       printf("\n===== Matrix B (Q8_0) =====\n");
+       for (int j = 0; j < n; j++) {
+           printf("Col %d : ", j);
+           for (int blk = 0; blk < k; blk++) {
+               const block_q8_0 *bb = B + j*ldb + blk;
+       	   float d = GGML_FP16_TO_FP32(bb->d);
+               printf(" [d=%f, qs=", d);
+               for (int x = 0; x < QK8_0; x++) {
+                   printf("%d ", bb->qs[x]);
+               }
+               printf("]\n");
+           }
+           printf("\n");
+       }
+   }
+    void print_vec_q4(const char* name, vec_t vec) {
+    printf("%s:\t", name);
+    for (int i = 0; i < 16; i++) {
+        uint8_t byte = (uint8_t) vec[i];   // take the raw 8-bit value
+
+        int8_t lo = (byte & 0x0F) - 8;     // lower nibble (0–15) → shift to signed (-8..7)
+        int8_t hi = ((byte >> 4) & 0x0F) - 8; // upper nibble
+
+        printf("(%2d,%2d) ", lo, hi);
+    }
+    printf("\n");
+}
+
+   void print_vec_q8(vec_t  vec){
+        for (int i = 0; i<16; i++) {
+            printf("%-5d ", *((int8_t*)&vec[i]));
+        }
+        printf("\n");
+    }
     inline void save_res(int ii, int jj, int idx, vector float * fin_res, int RM = 4, int RN = 4) {
         for (int I = 0; I < RM; I++) {
             for (int J = 0; J < RN; J++) {
