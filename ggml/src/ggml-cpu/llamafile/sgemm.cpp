@@ -1883,8 +1883,12 @@ class tinyBLAS_Q0_PPC {
         int n_rem = MIN(n - n0, 16);
 
         int mc = 0, nc = 0;
+        if (m_rem >=16 && n_rem >= 8) {
+		mc = 16;
+		nc= 8;
+		gemm<16,8>(m0, m,n0,n);
 
-        if (m_rem >= 8 && n_rem >= 8) {
+	} else if (m_rem >= 8 && n_rem >= 8) {
            mc = 8;
            nc = 8;
            gemm<8, 8>(m0, m, n0, n);
@@ -2010,16 +2014,32 @@ class tinyBLAS_Q0_PPC {
         std::array<int, 8> comparray {};
         vector float fin_res[16] = {0};
         vector float vs[16] = {0};
-        bool isAblock_q4 = std::is_same_v<TA, block_q4_0>;
+        bool constexpr isAblock_q4 = std::is_same_v<TA, block_q4_0>;
+	    __builtin_prefetch((A+(ii*lda)+0)->qs, 0, 1); // prefetch one loop ahead
+            __builtin_prefetch((B+(jj*ldb)+0)->qs, 0, 1); // prefetch one loop ahead
         for (int l = 0; l < k; l++) {
             __builtin_mma_xxsetaccz(&acc_0);
             __builtin_mma_xxsetaccz(&acc_1);
             __builtin_mma_xxsetaccz(&acc_2);
             __builtin_mma_xxsetaccz(&acc_3);
-            if (std::is_same_v<TA, block_q4_0>) {
+
+	    __builtin_prefetch((A+(ii*lda)+(l+1))->qs, 0, 1); // prefetch one loop ahead
+            __builtin_prefetch((B+(jj*ldb)+(l+1))->qs, 0, 1); // prefetch one loop ahead
+            if constexpr(isAblock_q4) {
                packNormalInt4<8>((A+(ii*lda)+l), lda, 8, 4, (int8_t*)vec_A, comparray);
             } else {
                packNormal<int8_t, vector signed char>((const block_q8_0*)(A+(ii*lda)+l), lda, 8, 8, (int8_t*)vec_A, false);
+		 auto aoffset = A+(ii*lda)+l;
+                for (int i = 0; i < 8; i++) {
+                    comparray[i] = 0;
+                    int ca = 0;
+                    auto *at = aoffset->qs;
+                    for (int j = 0; j < 32; j++)
+                        ca += (int)*at++;
+                    comparray[i] = ca;
+                    aoffset += lda;
+                }
+
             }
             packNormal<uint8_t, vector unsigned char>((B+(jj*ldb)+l), ldb, 8, 8, (uint8_t*)vec_B, true);
             for(int x = 0; x < 8; x++) {
@@ -2034,18 +2054,6 @@ class tinyBLAS_Q0_PPC {
                     *((float*)&vs[I+8]+J) = (unhalf((A+((ii+I)*lda)+l)->d) * unhalf((B+((jj+J+4)*ldb)+l)->d));
                 }
             }
-            if (!isAblock_q4) {
-                auto aoffset = A+(ii*lda)+l;
-                for (int i = 0; i < 8; i++) {
-                    comparray[i] = 0;
-                    int ca = 0;
-                    auto *at = aoffset->qs;
-                    for (int j = 0; j < 32; j++)
-                        ca += (int)*at++;
-                    comparray[i] = ca;
-                    aoffset += lda;
-                }
-            }
             compute<8>(&acc_0, 0, 0, comparray, vs, fin_res);
             compute<8>(&acc_1, 4, 4, comparray, vs, fin_res);
             compute<8>(&acc_2, 0, 8, comparray, vs, fin_res);
@@ -2056,6 +2064,83 @@ class tinyBLAS_Q0_PPC {
         save_res(ii, jj+4, 8, fin_res);
         save_res(ii+4, jj+4, 12, fin_res);
     }
+    void KERNEL_16x8(int64_t ii, int64_t jj) {
+    vec_t vec_A[32], vec_B[16] = {0};        // 16 rows × 2 blocks for A
+    acc_t acc[8];                             // 8 accumulators
+    std::array<int, 16> comparray {};         // 16 rows
+    vector float fin_res[32] = {0};           // final results
+    vector float vs[32] = {0};                // scale * B
+
+    constexpr bool isAblock_q4 = std::is_same_v<TA, block_q4_0>;
+
+    for (int l = 0; l < k; l++) {
+        // Zero all 8 accumulators
+        for (int x = 0; x < 8; x++)
+            __builtin_mma_xxsetaccz(&acc[x]);
+
+	    __builtin_prefetch((A+(ii*lda)+(l+1))->qs, 0, 1); // prefetch one loop ahead
+            __builtin_prefetch((B+(jj*ldb)+(l+1))->qs, 0, 1); // prefetch one loop ahead
+        // Pack A
+        if constexpr (isAblock_q4) {
+            packNormalInt4<16>((A + (ii*lda) + l), lda, 16, 4, (int8_t*)vec_A, comparray);
+        } else {
+            packNormal<int8_t, vector signed char>((const block_q8_0*)(A + (ii*lda) + l), lda, 16, 8, (int8_t*)vec_A, false);
+            auto aoffset = A + (ii*lda) + l;
+            for (int i = 0; i < 16; i++) {
+                comparray[i] = 0;
+                int ca = 0;
+                auto *at = aoffset->qs;
+                for (int j = 0; j < 32; j++) ca += (int)*at++;
+                comparray[i] = ca;
+                aoffset += lda;
+            }
+        }
+
+        // Pack B
+        packNormal<uint8_t, vector unsigned char>((B + (jj*ldb) + l), ldb, 8, 8, (uint8_t*)vec_B, true);
+
+        // MMA multiply: 16 rows × 8 cols → 4×4 quadrants for each 8×4
+        for (int x = 0; x < 8; x++) {
+            // top-left / top-right quadrants
+            __builtin_mma_xvi8ger4pp(&acc[0], vec_A[x],      vec_B[x]);     // 0–7 rows, 0–3 cols
+            __builtin_mma_xvi8ger4pp(&acc[2], vec_A[x],      vec_B[x+8]);   // 0–7 rows, 4–7 cols
+            // bottom-left / bottom-right quadrants
+            __builtin_mma_xvi8ger4pp(&acc[1], vec_A[x+8],    vec_B[x]);     // 8–15 rows, 0–3 cols
+            __builtin_mma_xvi8ger4pp(&acc[3], vec_A[x+8],    vec_B[x+8]);   // 8–15 rows, 4–7 cols
+            // extra quadrants (double-buffer or prefetch)
+            __builtin_mma_xvi8ger4pp(&acc[4], vec_A[x],      vec_B[x]);     // same as top-left, can be reused
+            __builtin_mma_xvi8ger4pp(&acc[6], vec_A[x],      vec_B[x+8]);   // same as top-right
+            __builtin_mma_xvi8ger4pp(&acc[5], vec_A[x+8],    vec_B[x]);     // same as bottom-left
+            __builtin_mma_xvi8ger4pp(&acc[7], vec_A[x+8],    vec_B[x+8]);   // same as bottom-right
+        }
+
+        // Compute vs: scale * B
+        for (int I = 0; I < 16; I++) {
+            float a_scale = unhalf((A + ((ii+I)*lda) + l)->d);
+            for (int J = 0; J < 4; J++) {
+                *((float*)&vs[I]    + J) = a_scale * unhalf((B + ((jj+J)*ldb) + l)->d);
+                *((float*)&vs[I+16] + J) = a_scale * unhalf((B + ((jj+J+4)*ldb) + l)->d);
+            }
+        }
+
+        // Compute accumulators
+        compute<16>(&acc[0], 0, 0, comparray, vs, fin_res);
+        compute<16>(&acc[2], 0, 4, comparray, vs, fin_res);
+        compute<16>(&acc[1], 8, 0, comparray, vs, fin_res);
+        compute<16>(&acc[3], 8, 4, comparray, vs, fin_res);
+        compute<16>(&acc[4], 0, 0, comparray, vs, fin_res);
+        compute<16>(&acc[6], 0, 4, comparray, vs, fin_res);
+        compute<16>(&acc[5], 8, 0, comparray, vs, fin_res);
+        compute<16>(&acc[7], 8, 4, comparray, vs, fin_res);
+    }
+
+    // Save results
+    for (int r = 0; r < 16; r += 8) {
+        for (int c = 0; c < 8; c += 4) {
+            save_res(ii + r, jj + c, /*offset*/ r + c, fin_res);
+        }
+    }
+}
 
     void gemm_small(int64_t m0, int64_t m, int64_t n0, int64_t n, int RM, int RN) {
         int64_t ytiles = (m - m0) / RM;
@@ -2133,7 +2218,9 @@ class tinyBLAS_Q0_PPC {
           KERNEL_8x4(ii,jj);
        } else if constexpr(RM == 8 && RN == 8) {
           KERNEL_8x8(ii,jj);
-       } else {
+       } else if constexpr(RM == 16 && RN == 8) {
+	       KERNEL_16x8(ii,jj);
+       }else {
           assert(false && "RN/RM values not supported");
        }
     }
