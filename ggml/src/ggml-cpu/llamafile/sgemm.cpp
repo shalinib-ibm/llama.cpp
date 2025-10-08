@@ -1598,8 +1598,8 @@ class tinyBLAS_Q0_PPC {
        }
     }
 
-    template<int size>
-    inline void compute(acc_t* ACC, int c_idx, int s_idx, std::array<int, size>& comparray, vector float* vs, vector float* fin_res) {
+    //template<int size>
+    inline void compute(acc_t* ACC, int c_idx, int s_idx, int* comparray, vector float* vs, vector float* fin_res) {
        vector signed int vec_C[4];
        vector float CA[4] = {0};
        vector float res[4] = {0};
@@ -1660,8 +1660,9 @@ class tinyBLAS_Q0_PPC {
         vec_xst(t8, 0, vecOffset+48);
     }
 
-    template<int size>
-    void packNormalInt4(const TA* a, int64_t lda, int rows, int cols, int8_t* vec, std::array<int, size>& comparray) {
+    //template<int size>
+    //void packNormalInt4(const TA* a, int64_t lda, int rows, int cols, int8_t* vec, std::array<int, size>& comparray) {
+    void packNormalInt4(const TA* a, int64_t lda, int rows, int cols, int8_t* vec, int* comparray) {
         int64_t i, j;
         TA *aoffset = NULL;
         int8_t *vecOffset = NULL;
@@ -1916,7 +1917,7 @@ class tinyBLAS_Q0_PPC {
 
 
     void KERNEL_4x8(int64_t ii, int64_t jj) {
-        vec_t vec_A[8], vec_B[16] = {0};
+        /*vec_t vec_A[8], vec_B[16] = {0};
         acc_t acc_0, acc_1;
         std::array<int, 4> comparray {};
         vector float fin_res[8] = {0};
@@ -1957,11 +1958,11 @@ class tinyBLAS_Q0_PPC {
             compute<4>(&acc_1, 0, 4, comparray, vs, fin_res);
         }
         save_res(ii, jj, 0, fin_res);
-        save_res(ii, jj+4, 4, fin_res);
+        save_res(ii, jj+4, 4, fin_res);*/
     }
 
     void KERNEL_8x4(int64_t ii, int64_t jj) {
-        vec_t vec_A[16], vec_B[8] = {0};
+        /*vec_t vec_A[16], vec_B[8] = {0};
         acc_t acc_0, acc_1;
         std::array<int, 8> comparray {};
         vector float fin_res[8] = {0};
@@ -2001,55 +2002,61 @@ class tinyBLAS_Q0_PPC {
             compute<8>(&acc_1, 4, 4, comparray, vs, fin_res);
         }
         save_res(ii, jj, 0, fin_res);
-        save_res(ii+4, jj, 4, fin_res);
+        save_res(ii+4, jj, 4, fin_res);*/
     }
 
     void KERNEL_8x8(int64_t ii, int64_t jj) {
-        vec_t vec_A[16], vec_B[16] = {0};
+        vec_t vec_A[16*k], vec_B[16*k] = {0};
         acc_t acc_0, acc_1, acc_2, acc_3;
-        std::array<int, 8> comparray {};
+        int comparray [8*k];
         vector float fin_res[16] = {0};
-        vector float vs[16] = {0};
+        vector float vs[16*k] = {0};
         bool isAblock_q4 = std::is_same_v<TA, block_q4_0>;
+	for (int l = 0; l< k; l++) {
+	    // prepack A
+	    if (isAblock_q4) { 
+               packNormalInt4((A+(ii*lda)+l), lda, 8, 4, (int8_t*)(vec_A + 16*l), comparray + 8*l);
+	    } else {
+		 packNormal<int8_t, vector signed char>((const block_q8_0*)(A+(ii*lda)+l), lda, 8, 8, (int8_t*)(vec_A + 16*l), false);
+	       auto aoffset = A+(ii*lda)+l;
+               for (int i = 0; i < 8; i++) {
+                   comparray[16*l + i] = 0;
+                   int ca = 0;
+                   auto *at = aoffset->qs;
+                   for (int j = 0; j < 32; j++)
+                       ca += (int)*at++;
+                   comparray[16*l + i] = ca;
+                   aoffset += lda;
+	    }
+	}
+	}
+	for (int l = 0; l < k; l++) {
+            // prepack B 
+            packNormal<uint8_t, vector unsigned char>((B+(jj*ldb)+l), ldb, 8, 8, (uint8_t*)(vec_B + 16*l), true);
+
+	}
         for (int l = 0; l < k; l++) {
             __builtin_mma_xxsetaccz(&acc_0);
             __builtin_mma_xxsetaccz(&acc_1);
             __builtin_mma_xxsetaccz(&acc_2);
             __builtin_mma_xxsetaccz(&acc_3);
-            if (std::is_same_v<TA, block_q4_0>) {
-               packNormalInt4<8>((A+(ii*lda)+l), lda, 8, 4, (int8_t*)vec_A, comparray);
-            } else {
-               packNormal<int8_t, vector signed char>((const block_q8_0*)(A+(ii*lda)+l), lda, 8, 8, (int8_t*)vec_A, false);
-            }
-            packNormal<uint8_t, vector unsigned char>((B+(jj*ldb)+l), ldb, 8, 8, (uint8_t*)vec_B, true);
             for(int x = 0; x < 8; x++) {
-                __builtin_mma_xvi8ger4pp(&acc_0, vec_A[x], vec_B[x]);
-                __builtin_mma_xvi8ger4pp(&acc_1, vec_A[x+8], vec_B[x]);
-                __builtin_mma_xvi8ger4pp(&acc_2, vec_A[x], vec_B[x+8]);
-                __builtin_mma_xvi8ger4pp(&acc_3, vec_A[x+8], vec_B[x+8]);
+                __builtin_mma_xvi8ger4pp(&acc_0, vec_A[16*l + x], vec_B[16*l + x]);
+                __builtin_mma_xvi8ger4pp(&acc_1, vec_A[16*l + x+8], vec_B[16*l  + x]);
+                __builtin_mma_xvi8ger4pp(&acc_2, vec_A[16*l + x], vec_B[16*l + x+8]);
+                __builtin_mma_xvi8ger4pp(&acc_3, vec_A[16*l + x+8], vec_B[16*l + x+8]);
             }
             for (int I = 0; I<8; I++) {
+                //float a_scale = unhalf((A+((ii+I)*lda)+l)->d);// * unhalf((B+((jj+J)*ldb)+l)->d));
                 for (int J = 0; J<4; J++) {
                     *((float*)&vs[I]+J) = (unhalf((A+((ii+I)*lda)+l)->d) * unhalf((B+((jj+J)*ldb)+l)->d));
                     *((float*)&vs[I+8]+J) = (unhalf((A+((ii+I)*lda)+l)->d) * unhalf((B+((jj+J+4)*ldb)+l)->d));
                 }
             }
-            if (!isAblock_q4) {
-                auto aoffset = A+(ii*lda)+l;
-                for (int i = 0; i < 8; i++) {
-                    comparray[i] = 0;
-                    int ca = 0;
-                    auto *at = aoffset->qs;
-                    for (int j = 0; j < 32; j++)
-                        ca += (int)*at++;
-                    comparray[i] = ca;
-                    aoffset += lda;
-                }
-            }
-            compute<8>(&acc_0, 0, 0, comparray, vs, fin_res);
-            compute<8>(&acc_1, 4, 4, comparray, vs, fin_res);
-            compute<8>(&acc_2, 0, 8, comparray, vs, fin_res);
-            compute<8>(&acc_3, 4, 12, comparray, vs, fin_res);
+            compute(&acc_0, 0, 0, comparray+ 8*l, vs, fin_res);
+            compute(&acc_1, 4, 4, comparray+ 8*l, vs, fin_res);
+            compute(&acc_2, 0, 8, comparray+ 8*l, vs, fin_res);
+            compute(&acc_3, 4, 12, comparray+ 8*l, vs, fin_res);
         }
         save_res(ii, jj, 0, fin_res);
         save_res(ii+4, jj, 4, fin_res);
@@ -2074,7 +2081,8 @@ class tinyBLAS_Q0_PPC {
         for (int64_t job = start; job < end; ++job) {
             int64_t ii = m0 + job / xtiles * RM;
             int64_t jj = n0 + job % xtiles * RN;
-            std::array<int, 4> comparray{};
+            //std::array<int, 4> comparray{};
+            int comparray[4];//{};
             vector float res[4] = {0};
             vector float fin_res[4] = {0};
             vector float vs[4] = {0};
@@ -2086,7 +2094,8 @@ class tinyBLAS_Q0_PPC {
                 __builtin_prefetch((B+(jj*ldb)+(l+1))->qs, 0, 1); // prefetch one loop ahead
                 __builtin_mma_xxsetaccz(&acc_0);
                 if (isAblock_q4) {
-                   packNormalInt4<4>((A+(ii*lda)+l), lda, RM, 4, (int8_t*)vec_A, comparray);
+                   //packNormalInt4<4>((A+(ii*lda)+l), lda, RM, 4, (int8_t*)vec_A, comparray);
+                   packNormalInt4((A+(ii*lda)+l), lda, RM, 4, (int8_t*)vec_A, comparray);
                 } else {
                    packNormal<int8_t, vector signed char>((const block_q8_0*)(A+(ii*lda)+l), lda, RM, 8, (int8_t*)vec_A, false);
                 }
