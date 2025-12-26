@@ -2009,17 +2009,37 @@ class tinyBLAS_Q0_PPC {
         acc_t acc_0, acc_1, acc_2, acc_3;
         std::array<int, 8> comparray {};
         vector float fin_res[16] = {0};
-        vector float vs[16] = {0};
+        vector float vs[16 * k] = {0};
+	// scale factor computation
+	for (int l = 0; l < k; l++) {
+	     for (int I = 0; I<8; I++) {
+                 float a_scale = unhalf((A+((ii+I)*lda)+l)->d);;
+                for (int J = 0; J<4; J++) {
+                    *((float*)&vs[(16*l)+ I]+J) = (a_scale * unhalf((B+((jj+J)*ldb)+l)->d));
+                    *((float*)&vs[(16*l) + I+8]+J) = (a_scale * unhalf((B+((jj+J+4)*ldb)+l)->d));
+                }
+            }
+	}
         bool isAblock_q4 = std::is_same_v<TA, block_q4_0>;
         for (int l = 0; l < k; l++) {
             __builtin_mma_xxsetaccz(&acc_0);
             __builtin_mma_xxsetaccz(&acc_1);
             __builtin_mma_xxsetaccz(&acc_2);
             __builtin_mma_xxsetaccz(&acc_3);
-            if (std::is_same_v<TA, block_q4_0>) {
+            if (isAblock_q4) {
                packNormalInt4<8>((A+(ii*lda)+l), lda, 8, 4, (int8_t*)vec_A, comparray);
             } else {
                packNormal<int8_t, vector signed char>((const block_q8_0*)(A+(ii*lda)+l), lda, 8, 8, (int8_t*)vec_A, false);
+	       auto aoffset = A+(ii*lda)+l;
+               for (int i = 0; i < 8; i++) {
+                   comparray[i] = 0;
+                   int ca = 0;
+                   auto *at = aoffset->qs;
+                   for (int j = 0; j < 32; j++)
+                       ca += (int)*at++;
+                   comparray[i] = ca;
+                   aoffset += lda;
+               }
             }
             packNormal<uint8_t, vector unsigned char>((B+(jj*ldb)+l), ldb, 8, 8, (uint8_t*)vec_B, true);
             for(int x = 0; x < 8; x++) {
@@ -2028,28 +2048,17 @@ class tinyBLAS_Q0_PPC {
                 __builtin_mma_xvi8ger4pp(&acc_2, vec_A[x], vec_B[x+8]);
                 __builtin_mma_xvi8ger4pp(&acc_3, vec_A[x+8], vec_B[x+8]);
             }
-            for (int I = 0; I<8; I++) {
+            /*for (int I = 0; I<8; I++) {
+                //float a_scale = unhalf((A+((ii+I)*lda)+l)->d);// * unhalf((B+((jj+J)*ldb)+l)->d));
                 for (int J = 0; J<4; J++) {
                     *((float*)&vs[I]+J) = (unhalf((A+((ii+I)*lda)+l)->d) * unhalf((B+((jj+J)*ldb)+l)->d));
                     *((float*)&vs[I+8]+J) = (unhalf((A+((ii+I)*lda)+l)->d) * unhalf((B+((jj+J+4)*ldb)+l)->d));
                 }
-            }
-            if (!isAblock_q4) {
-                auto aoffset = A+(ii*lda)+l;
-                for (int i = 0; i < 8; i++) {
-                    comparray[i] = 0;
-                    int ca = 0;
-                    auto *at = aoffset->qs;
-                    for (int j = 0; j < 32; j++)
-                        ca += (int)*at++;
-                    comparray[i] = ca;
-                    aoffset += lda;
-                }
-            }
-            compute<8>(&acc_0, 0, 0, comparray, vs, fin_res);
-            compute<8>(&acc_1, 4, 4, comparray, vs, fin_res);
-            compute<8>(&acc_2, 0, 8, comparray, vs, fin_res);
-            compute<8>(&acc_3, 4, 12, comparray, vs, fin_res);
+            }*/
+            compute<8>(&acc_0, 0, 0, comparray, vs + 16*l, fin_res);
+            compute<8>(&acc_1, 4, 4, comparray, vs + 16*l, fin_res);
+            compute<8>(&acc_2, 0, 8, comparray, vs + 16*l, fin_res);
+            compute<8>(&acc_3, 4, 12, comparray, vs+ 16*l, fin_res);
         }
         save_res(ii, jj, 0, fin_res);
         save_res(ii+4, jj, 4, fin_res);
