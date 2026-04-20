@@ -61,17 +61,23 @@ static void tensor_dump(const ggml_tensor * tensor, const char * name) {
 struct benchmark_params_struct {
     int     n_threads     = 1;
     int32_t n_iterations  = 10;
+    int m = 512;
+    int n = 512;
+    int k = 64;
 };
-
 static void print_usage(int /*argc*/, char ** argv, struct benchmark_params_struct params) {
     fprintf(stderr, "usage: %s [options]\n", argv[0]);
     fprintf(stderr, "\n");
     fprintf(stderr, "options:\n");
     fprintf(stderr, "  -h, --help            show this help message and exit\n");
-    fprintf(stderr, "  -t N, --threads N     number of threads to use during computation (default: %d)\n", params.n_threads);
-    fprintf(stderr, "  -i N, --iter N     number of iterations to use during computation (default: %d)\n", params.n_iterations);
+    fprintf(stderr, "  -t N, --threads N     number of threads to use (default: %d)\n", params.n_threads);
+    fprintf(stderr, "  -i N, --iter N        number of iterations to use (default: %d)\n", params.n_iterations);
+    fprintf(stderr, "  -m N, --m N           matrix dimension m (default: %d)\n", params.m);
+    fprintf(stderr, "  -n N, --n N           matrix dimension n (default: %d)\n", params.n);
+    fprintf(stderr, "  -k N, --k N           matrix dimension k (default: %d)\n", params.k);
     fprintf(stderr, "\n");
 }
+
 
 int main(int argc, char ** argv)  {
     struct benchmark_params_struct benchmark_params;
@@ -93,7 +99,25 @@ int main(int argc, char ** argv)  {
                 break;
             }
             benchmark_params.n_iterations = std::stoi(argv[i]);
-        }  else if (arg == "-h" || arg == "--help") {
+        } else if (arg == "-m") {
+            if (++i >= argc) {
+               invalid_param = true;
+               break;
+            }
+            benchmark_params.m = std::stoi(argv[i]);
+        } else if (arg == "-n") {
+            if (++i >= argc) {
+               invalid_param = true;
+               break;
+            }
+            benchmark_params.n = std::stoi(argv[i]);
+        }else if (arg == "-k") {
+            if (++i >= argc) {
+               invalid_param = true;
+               break;
+            }
+            benchmark_params.k = std::stoi(argv[i]);
+        }else if (arg == "-h" || arg == "--help") {
             print_usage(argc, argv, benchmark_params);
             exit(0);
         }
@@ -119,9 +143,9 @@ int main(int argc, char ** argv)  {
     const int sizex = 11008;
     const int sizez = 128;
     */
-    const int sizey = 8; // m
-    const int sizex = 32*2; // k 
-    const int sizez = 4; // n
+    const int sizey = benchmark_params.m; //8; // m
+    const int sizex = 32*benchmark_params.k; //32*2; // k 
+    const int sizez = benchmark_params.n; //4; // n
 #else
     /* Working - let's increase size */
     const int sizey = 1;
@@ -186,9 +210,10 @@ int main(int argc, char ** argv)  {
     ggml_build_forward_expand(gf, m11xm2);
 
     printf("n_threads=%i\n", benchmark_params.n_threads);
-    printf("Printing inputs fp32 matrices\n");
-    TENSOR_DUMP(m11);
-    TENSOR_DUMP(m2);
+    printf("m =%d n = %d k = %d\n", benchmark_params.m, benchmark_params.n, benchmark_params.k);
+    //printf("Printing inputs fp32 matrices\n");
+    //TENSOR_DUMP(m11);
+    //TENSOR_DUMP(m2);
 
     std::vector<uint8_t> work_buffer;
 
@@ -253,7 +278,7 @@ int main(int argc, char ** argv)  {
         long long int start = ggml_time_us();
         //printf("Running ggml_graph_compute\n");
         ggml_graph_compute_helper(work_buffer, gf31, benchmark_params.n_threads);
-        TENSOR_DUMP(ggml_graph_node(gf31, 0));
+        //TENSOR_DUMP(ggml_graph_node(gf31, 0));
 
         long long int stop = ggml_time_us();
         long long int usec = stop-start;
