@@ -2356,7 +2356,7 @@ class tinyBLAS_Q0_PPC {
             //debug_print_q8_0((const block_q8_0*)A, lda, m);
             //debug_print_q8_0((const block_q8_0*)B, ldb, n);
             mnpack(0, m, 0, n);
-        }
+        //}
     #endif
     }
 
