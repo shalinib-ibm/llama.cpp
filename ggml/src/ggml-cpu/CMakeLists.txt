@@ -90,6 +90,7 @@ function(ggml_add_cpu_backend_variant_impl tag_name)
 
         list(APPEND GGML_CPU_SOURCES
                     ggml-cpu/llamafile/sgemm.cpp
+                    ggml-cpu/llamafile/sgemm_p12.cpp
                     ggml-cpu/llamafile/sgemm.h)
     endif()
 
