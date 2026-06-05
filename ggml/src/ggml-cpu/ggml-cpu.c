@@ -821,6 +821,7 @@ struct ggml_tensor * ggml_set_f32(struct ggml_tensor * tensor, float value) {
     const size_t n1 = tensor->nb[1];
 
     char * const data = tensor->data;
+    float v = value;
 
     switch (tensor->type) {
         case GGML_TYPE_I8:
@@ -862,7 +863,7 @@ struct ggml_tensor * ggml_set_f32(struct ggml_tensor * tensor, float value) {
             {
                 assert(tensor->nb[0] == sizeof(float));
                 for (int i = 0; i < n; i++) {
-                    ggml_vec_set_f32(nc, (float *)(data + i*n1), value);
+                    ggml_vec_set_f32(nc, (float *)(data + i*n1), v++);
                 }
             } break;
         default:
