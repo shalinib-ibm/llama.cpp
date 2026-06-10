@@ -2635,7 +2635,7 @@ class tinyBLAS_Q0_PPC {
             fin_res[s_idx + i] = vec_madd(res[i], vs[s_idx + i], fin_res[s_idx + i]);
         }
     }
-
+  #if defined(MMA_PLUS)
     template<typename ArrayType>
     inline void compute_8x4(__dmr1024 * ACC, int c_idx, int s_idx, ArrayType & comparray, vector float * vs, vector float * fin_res) {
         vector signed int vec_C[8];
@@ -2649,6 +2649,29 @@ class tinyBLAS_Q0_PPC {
             fin_res[s_idx + r_idx] = vec_madd(res, vs[s_idx + r_idx], fin_res[s_idx + r_idx]);
         }
     }
+    inline void save_dmr1024(__dmr1024* acc, int ii, int jj) {
+    vec_t vec_C[8];
+    __builtin_mma_disassemble_dmr(vec_C, acc);
+    for (int I = 0; I < 8; I++) {
+        int target_row = ii + (7 - I);
+        for (int J = 0; J < 4; J++) {
+            float* dest = (float *)(C + target_row + ((jj + J) * ldc));
+            *dest = *((float *)&vec_C[I] + J);
+        }
+    }
+}
+inline void add_save_dmr1024(__dmr1024* acc, int ii, int jj) {
+    vec_t vec_C[8];
+    __builtin_mma_disassemble_dmr(vec_C, acc);
+    for (int I = 0; I < 8; I++) {
+        int target_row = ii + (7 - I);
+        for (int J = 0; J < 4; J++) {
+            float* dest = (float *)(C + target_row + ((jj + J) * ldc));
+            *dest += *((float *)&vec_C[I] + J);
+        }
+    }
+}
+#endif
     inline void process_q4_elements(vector signed char (&c)[2], int * ca) {
         const vector signed char lowMask = vec_splats((signed char)0xF);
         const vector unsigned char v4 = vec_splats((unsigned char)0x4);
@@ -3424,6 +3447,67 @@ void KERNEL_16x8(int64_t ii, int64_t jj) {
         save_res(ii,     jj + 12, 48, fin_res, 8, 4);
         save_res(ii + 8, jj + 12, 56, fin_res, 8, 4);
     }
+    
+    void KERNEL_Q0(int64_t ii, int64_t jj, int64_t mc, int64_t nc, int64_t kc, int64_t l, vec_t * vec_A, vec_t * vec_B) {
+        printf("In kernel Q0 matmul tiled\n");
+        __dmr1024 acc[8];
+        for (int i = 0; i < mc ; i += 16) {
+            for (int j = 0; j < nc; j += 16) {
+                int A0_base = (i / 16) * (2 * 32 * kc);
+                int B0_base = (j / 16) * (2 * 32 * kc);
+                for (int x = 0; x < 8; x++) {
+                     __builtin_mma_dmsetdmrz(&acc[x]);
+                }
+                for (int64_t kk = 0; kk < kc; kk++) {
+                    int A0_block_idx = A0_base + kk * 32;
+                    int B0_block_idx = B0_base + kk * 32;
+                    int A1_block_idx = A0_block_idx + 32 * kc;
+                    int B1_block_idx = B0_block_idx + 32 * kc;
+                    vec_t * A0_block = & vec_A[A0_block_idx];
+                    vec_t * B0_block = & vec_B[B0_block_idx];
+                    vec_t * A1_block = & vec_A[A1_block_idx];
+                    vec_t * B1_block = & vec_B[B1_block_idx];
+                    __vector_pair vec_A0, vec_A1;
+                    for (int it = 0; it < 4; it++) {
+                        for (int x = 0; x < 4; x++) {
+                            __builtin_vsx_build_pair(&vec_A0, A0_block[8 * it + x], A0_block[8* it + x + 4]);
+                            __builtin_vsx_build_pair(&vec_A1, A1_block[8 * it + x], A1_block[8* it + x + 4]);
+
+                            __builtin_mma_dmxvf16gerx2pp(& acc[0], vec_A0, B0_block[8 * it + x]);
+                            __builtin_mma_dmxvf16gerx2pp(& acc[1], vec_A0, B0_block[8 * it + x + 4]);
+                            __builtin_mma_dmxvf16gerx2pp(& acc[4], vec_A1, B0_block[8 * it + x]);
+                            __builtin_mma_dmxvf16gerx2pp(& acc[5], vec_A1, B0_block[8 * it+ x + 4]);
+
+                            __builtin_mma_dmxvf16gerx2pp(& acc[2], vec_A0, B1_block[8 * it + x ]);
+                            __builtin_mma_dmxvf16gerx2pp(& acc[3], vec_A0, B1_block[8 * it + x + 4]);
+                            __builtin_mma_dmxvf16gerx2pp(& acc[6], vec_A1, B1_block[8 * it + x ]);
+                            __builtin_mma_dmxvf16gerx2pp(& acc[7], vec_A1, B1_block[8 * it+ x + 4]);
+                        }
+                    }
+                }
+                if (l == 0) {
+                    save_dmr1024(& acc[0], ii + i, jj + j);
+                    save_dmr1024(& acc[1], ii + i, jj + j + 4);
+                    save_dmr1024(& acc[4], ii + i + 8, jj + j);
+                    save_dmr1024(& acc[5], ii + i + 8, jj + j + 4);
+                    save_dmr1024(& acc[2], ii + i, jj + j + 8);
+                    save_dmr1024(& acc[3], ii + i, jj + j + 12);
+                    save_dmr1024(& acc[6], ii + i + 8, jj + j + 8);
+                    save_dmr1024(& acc[7], ii + i + 8, jj + j + 12);
+                } else {
+                    add_save_dmr1024(& acc[0], ii + i, jj + j);
+                    add_save_dmr1024(& acc[1], ii + i, jj + j + 4);
+                    add_save_dmr1024(& acc[4], ii + i + 8, jj + j);
+                    add_save_dmr1024(& acc[5], ii + i + 8, jj + j + 4);
+                    add_save_dmr1024(& acc[2], ii + i, jj + j + 8);
+                    add_save_dmr1024(& acc[3], ii + i, jj + j + 12);
+                    add_save_dmr1024(& acc[6], ii + i + 8, jj + j + 8);
+                    add_save_dmr1024(& acc[7], ii + i + 8, jj + j + 12);
+                }
+            }
+        }
+    }
+
 #else
     void KERNEL_8x4(int64_t ii, int64_t jj) {
         vec_t vec_A[16], vec_B[8] = {0};
@@ -3575,7 +3659,7 @@ void KERNEL_16x8(int64_t ii, int64_t jj) {
             }
         }
     }
-
+#endif
     void matmul_tiled(int64_t m, int64_t n, int64_t mc, int64_t nc, int64_t kc) {
         vec_t A_pack[mc * kc * 4];
         vec_t B_pack[nc * kc * 4];
@@ -3603,7 +3687,7 @@ void KERNEL_16x8(int64_t ii, int64_t jj) {
             }
         }
     }
-#endif
+
     void gemm_small(int64_t m0, int64_t m, int64_t n0, int64_t n, int RM, int RN) {
         int64_t ytiles = (m - m0) / RM;
         int64_t xtiles = (n - n0) / RN;
