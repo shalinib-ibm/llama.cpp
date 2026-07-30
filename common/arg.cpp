@@ -977,6 +977,7 @@ static void common_params_print_completion(common_params_context & ctx_arg) {
         "llama-batched",
         "llama-batched-bench",
         "llama-bench",
+        "llama-benchmark-matmul",
         "llama-cli",
         "llama-completion",
         "llama-convert-llama2c-to-ggml",
